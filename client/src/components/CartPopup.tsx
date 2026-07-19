@@ -257,12 +257,15 @@ export default function CartPopup({ visible, onClose }: CartPopupProps) {
     return t('cart.defaultTitle', { nickname: user?.user_nickname || 'User', date: dateStr });
   }, [locale, user?.user_nickname, t]);
 
+  const [editTitleInput, setEditTitleInput] = useState('');
+
   const handleEditTitle = async () => {
+    setEditTitleInput(orderTitle || '');
     const result = await Dialog.confirm({
       title: t('cart.editTitle'),
       content: <input
-        id="order-title-input"
-        defaultValue={orderTitle || ''}
+        value={editTitleInput}
+        onChange={(e) => setEditTitleInput(e.target.value)}
         placeholder={t('cart.titlePlaceholder')}
         style={{ width: '100%', padding: '8px 12px', border: `1px solid var(--app-color-border)`, borderRadius: '4px', fontSize: '14px', outline: 'none' }}
       />,
@@ -271,8 +274,7 @@ export default function CartPopup({ visible, onClose }: CartPopupProps) {
     });
 
     if (result) {
-      const input = document.getElementById('order-title-input') as HTMLInputElement;
-      const newTitle = input?.value?.trim() || '';
+      const newTitle = editTitleInput.trim();
       setOrderTitle(newTitle || undefined);
     }
   };
