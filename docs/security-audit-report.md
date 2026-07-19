@@ -4,7 +4,7 @@
 **Date:** 2026-07-19  
 **Scope:** Full codebase — Express backend + React frontend + PostgreSQL schema  
 **Methodology:** Multi-phase audit (Recon → Hunt → Validate → Report)  
-**Status:** All CRITICAL and HIGH findings have been fixed
+**Status:** All CRITICAL and HIGH findings have been addressed; capability-based scan exceptions are documented below
 
 ---
 
@@ -12,9 +12,9 @@
 
 This is a fixed asset management PWA with JWT auth, room-based access control, and QR-code scanning for item borrow/return. The codebase has **solid foundations** — parameterized queries are used consistently, bcrypt password hashing, React auto-escaping, and proper ownership checks on most write operations.
 
-However, the audit revealed **systematic authorization gaps**: many read endpoints verify authentication but skip room membership checks, allowing any authenticated user to access data across all rooms. Combined with a hardcoded JWT secret fallback and no rate limiting, the application has several **HIGH and CRITICAL** severity issues that should be addressed before production deployment.
+The audit initially revealed systematic authorization gaps on item, reservation, comment, history, and box reads, plus weak JWT lifecycle and request hardening. The implementation now applies shared item-access rules, personal-box ownership checks, token-version revocation, an origin allowlist, and authentication rate limiting. Remaining medium findings and the intentional QR capability model are documented below.
 
-**Baseline comparable:** Inventory management systems like Snipe-IT, Asset Panda. These systems enforce tenant isolation at every data access layer — this application partially does this but has significant gaps on read endpoints.
+**Baseline comparable:** Inventory management systems like Snipe-IT and Asset Panda. Unlike strict tenant-only systems, this application's business rules intentionally allow physical QR possession to initiate item transfers between people and warehouses. Ordinary item reads remain restricted to owners, current holders, and members of the item's owning or current room.
 
 ---
 
@@ -27,7 +27,7 @@ However, the audit revealed **systematic authorization gaps**: many read endpoin
 | 3 | **CRITICAL** | IDOR — scan endpoint leaks all item/box data | `POST /api/scan` |
 | 4 | **CRITICAL** | IDOR — reservation data leak | `GET /api/reservations/items/:id` |
 | 5 | **CRITICAL** | IDOR — comments leak with user data | `GET /api/items/:id/comments` |
-| 6 | **CRITICAL** | Return flow — no possession validation | `POST /api/scan/return-batch` |
+| 6 | **CRITICAL** | Return flow — missing target-box authorization | `POST /api/scan/return-batch` |
 | 7 | **CRITICAL** | Checkout TOCTOU — double-booking race | `POST /api/reservations/orders` |
 | 8 | **HIGH** | JWT hardcoded fallback secret | All endpoints |
 | 9 | **HIGH** | IDOR — history leak for personal box items | `GET /api/items/:id/history` |
@@ -110,7 +110,7 @@ Content-Type: application/json
 
 **Impact:** When scanning a box QR code, returns ALL items in that box with owner info. When scanning an item QR code, returns full item details. Complete inventory enumeration across all rooms.
 
-**Fix:** Verify the requesting user is a member of the room containing the scanned resource.
+**Resolution:** Box scans require room membership or personal-box ownership. Item scans remain an intentional capability-based operation: an authenticated user who possesses the physical QR code may inspect and take the item, matching the application's free-transfer model. QR values should therefore be treated as physical capability secrets and must not be exposed in public listings.
 
 ---
 
@@ -148,7 +148,7 @@ Authorization: Bearer <attacker_token>
 
 ---
 
-### 6. Return Flow — No Possession Validation
+### 6. Return Flow — Target Authorization
 
 **File:** `server/src/controllers/scanController.ts:335-443`  
 **Endpoint:** `POST /api/scan/return-batch`
@@ -162,15 +162,9 @@ Content-Type: application/json
 {"items": [{"itemId": 42, "boxId": 999}]}
 ```
 
-**Impact:** Any authenticated user can return any item on behalf of anyone else, to any box. Breaks audit trail integrity — transfer records show the wrong person as the returner. Items can be moved to wrong rooms' boxes to confuse tracking.
+**Business rule:** Returning an item does not require the operator to currently hold it; the application intentionally allows anyone to put a scanned item into a box they can access. The transfer record identifies the actual operator.
 
-**Fix:** Validate that the item is currently in the requester's personal box:
-```typescript
-const userBox = await getUserBox(userId);
-if (item.item_current_box_id !== userBox.box_id) {
-  // Reject: user doesn't possess this item
-}
-```
+**Resolution:** Validate access to the target box instead. Regular boxes require room membership and personal boxes require ownership. This prevents cross-room placement without breaking the established return workflow.
 
 ---
 
@@ -292,7 +286,7 @@ app.use('/api/auth/', authLimiter);
 
 **Impact:** Any authenticated user can borrow/return items from rooms they've never joined.
 
-**Fix:** Verify user is a member of the room the item belongs to before allowing borrow/return.
+**Resolution:** Borrowing from a regular box requires membership in its current room. Returning requires access to the target box. Moving an item from another user's hand remains allowed when the operator possesses the physical item QR code, matching the free-transfer domain rule.
 
 ---
 
@@ -303,11 +297,9 @@ app.use('/api/auth/', authLimiter);
 **File:** `server/src/controllers/itemController.ts:58-59`  
 **Endpoint:** `GET /api/items`
 
-**Issue:** `roomId` from query string is interpolated directly into SQL via template literal `${roomId}` instead of parameterized query.
+**Issue:** `roomId` from query string was interpolated directly into SQL via a template literal instead of a parameterized query.
 
-**Current mitigation:** The member check at lines 17-20 uses parameterized query against `INT NOT NULL` column, causing PostgreSQL to throw type error on non-integer input. This is an **accidental type gate** that is fragile.
-
-**Fix:** Replace `${roomId}` with `$N` parameter binding.
+**Resolution:** Fixed during follow-up review. All uses now share the `$1` parameter already supplied to the item-list queries.
 
 ---
 
@@ -316,11 +308,11 @@ app.use('/api/auth/', authLimiter);
 **File:** `server/src/controllers/itemController.ts:457-484`  
 **Endpoint:** `POST /api/items/:id/comments`
 
-**Issue:** Any authenticated user can comment on any item without room membership check.
+**Issue:** Any authenticated user could comment on any item without room membership check.
 
 **Impact:** Spam, social engineering via comments.
 
-**Fix:** Add room membership check.
+**Resolution:** Fixed using the shared item-access rule applied to item details, history, comments, and reservations.
 
 ---
 
@@ -404,31 +396,29 @@ The codebase does several things well:
 
 ## Fix Status
 
-### All CRITICAL and HIGH Findings — FIXED ✅
+### CRITICAL and HIGH Findings — ADDRESSED
 
-| # | Severity | Finding | Fix Commit |
+| # | Severity | Finding | Resolution |
 |---|----------|---------|------------|
-| 1 | CRITICAL | IDOR item data leak | `61a9542` |
-| 2 | CRITICAL | IDOR item leak via QR | `e11b34d` |
-| 3 | CRITICAL | IDOR scan endpoint leak | `5fc969f` |
-| 4 | CRITICAL | IDOR reservation leak | `d0fa068` |
-| 5 | CRITICAL | IDOR comments leak | `d0fa068` |
-| 6 | CRITICAL | Return no possession check | `8c2ea57` |
-| 7 | CRITICAL | Checkout TOCTOU race | `6c3b186` |
-| 8 | HIGH | JWT hardcoded fallback | `5afb292` |
-| 9 | HIGH | IDOR history leak | `a2e89fb` |
-| 10 | HIGH | IDOR personal box leak | `a2e89fb` |
-| 11 | HIGH | No token revocation | `f201f9a` |
-| 12 | HIGH | CORS allows all origins | `770b533` |
-| 13 | HIGH | No rate limiting | `770b533` |
-| 14 | HIGH | Unauthorized borrow/return | `8c2ea57` |
+| 1 | CRITICAL | IDOR item data leak | `6a1161c` + follow-up shared access rule |
+| 2 | CRITICAL | IDOR item leak via QR | `1b6cc53` + follow-up query correction |
+| 3 | CRITICAL | IDOR scan endpoint leak | `d21bf52`; item scan is a documented capability exception |
+| 4 | CRITICAL | IDOR reservation leak | `d5bf5d5` + follow-up shared access rule |
+| 5 | CRITICAL | IDOR comments leak | `d5bf5d5` + follow-up shared access rule |
+| 6 | CRITICAL | Return target authorization | Follow-up review; possession is not required by design |
+| 7 | CRITICAL | Checkout TOCTOU race | `ad30d07` |
+| 8 | HIGH | JWT hardcoded fallback | `524d5eb` |
+| 9 | HIGH | IDOR history leak | `cdf3913` + follow-up shared access rule |
+| 10 | HIGH | IDOR personal box leak | `cdf3913` |
+| 11 | HIGH | No token revocation | `36bc859` + follow-up legacy-token check |
+| 12 | HIGH | CORS allows all origins | `b0912e5` |
+| 13 | HIGH | No rate limiting | `b0912e5` |
+| 14 | HIGH | Unauthorized borrow/return | `1d572e9` + follow-up domain-aligned target checks |
 
 ### Remaining MEDIUM Findings (Not Yet Fixed)
 
 | # | Severity | Finding |
 |---|----------|---------|
-| 15 | MEDIUM | SQL injection via template literal in itemController.ts:58-59 |
-| 16 | MEDIUM | Unauthorized commenting (fixed as part of #5) ✅ |
 | 17 | MEDIUM | No security headers (helmet) |
 | 18 | MEDIUM | User enumeration via registration |
 | 19 | MEDIUM | Weak password policy (min 6 chars) |
@@ -438,5 +428,6 @@ The codebase does several things well:
 
 ## Recommended Priority (Remaining)
 
-1. **Medium term:** Fix #15 (SQL injection), #17 (security headers), #18-20 (medium items)
-2. **Long term:** Implement hardening notes
+1. **Medium term:** Fix #17 (security headers) and #18-20 (remaining medium items)
+2. **Long term:** Replace raw item-ID borrow/return submissions with short-lived signed scan grants if the server must cryptographically prove physical QR possession. The current API preserves backward compatibility and treats authenticated QR scanning as the capability boundary.
+3. **Long term:** Implement the remaining hardening notes

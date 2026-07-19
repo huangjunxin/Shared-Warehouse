@@ -27,40 +27,33 @@
 
 ### ✅ 1.1 Sequential API calls in `Warehouse.tsx` — FIXED
 
-**Commit:** `0c8bda1` | **Rule:** `async-parallel`
+**Commit:** `6d120d6` | **Rule:** `async-parallel`
 
-Changed from sequential calls to `Promise.all`:
-```tsx
-useEffect(() => {
-  if (currentRoom) {
-    Promise.all([loadItems(), loadJoinRequestCount()]);
-  }
-}, [currentRoom, filters]);
-```
+The final implementation uses independent SWR hooks for items and join requests. Both requests start from the same render and no longer form a sequential waterfall.
 
 ---
 
 ### ✅ 1.2 Sequential data loading in `MainLayout.tsx` — FIXED
 
-**Commit:** `949468f` | **Rule:** `async-parallel`
+**Commit:** `a69d2db` | **Rule:** `async-parallel`
 
-Parallelized notification count and in-hand count fetches.
+Notification count loading and the SWR-backed in-hand count request start independently when MainLayout mounts.
 
 ---
 
 ### ✅ 2.1 No dynamic imports for heavy routes — FIXED
 
-**Commit:** `6dcecb1` | **Rule:** `bundle-dynamic-imports`
+**Commit:** `cae9986` | **Rule:** `bundle-dynamic-imports`
 
 Added `React.lazy` + `Suspense` for heavy routes. Results:
-- Main bundle: 1,218KB → 683KB (gzip: 363KB → 228KB)
+- Main bundle: 1,218KB → 695KB (gzip: 363KB → 233KB) in the final verification build
 - Scanner, RoomSettings, MyItems loaded on demand
 
 ---
 
 ### ✅ 2.2 No preloading on hover/focus — FIXED
 
-**Commit:** `a1e2bb3` | **Rule:** `bundle-preload`
+**Commit:** `7f22314` | **Rule:** `bundle-preload`
 
 Added `routePreloadMap` in MainLayout with onMouseEnter/onFocus handlers on all tab items and scan buttons.
 
@@ -68,7 +61,7 @@ Added `routePreloadMap` in MainLayout with onMouseEnter/onFocus handlers on all 
 
 ### ✅ 3.1 No request deduplication — FIXED
 
-**Commit:** `903cbff` | **Rule:** `client-swr-dedup`
+**Commit:** `45ac9e4` | **Rule:** `client-swr-dedup`
 
 Added in-flight request sharing in notificationStore:
 ```tsx
@@ -80,27 +73,29 @@ let inflightRequest: Promise<void> | null = null;
 
 ### ✅ 4.1 No caching strategy for API responses — FIXED
 
-**Commit:** `5a7f6b2` | **Rule:** `client-swr-dedup`
+**Commit:** `1827dc0` | **Rule:** `client-swr-dedup`
 
 Introduced SWR for Warehouse, InHand, and MainLayout data fetching:
 - Automatic request deduplication
 - Stale-while-revalidate caching
 - `revalidateOnFocus: false` to prevent unnecessary refetches
 - `keepPreviousData: true` for smooth filter transitions
+- Shared fetcher supports URL strings and `[url, axiosConfig]` keys without changing API contracts
+- Warehouse search updates SWR only when a search is submitted or cleared
 
 ---
 
 ### ✅ 4.2 localStorage accessed without error handling — FIXED
 
-**Commit:** `4cef7b2` | **Rule:** `client-localstorage-schema`
+**Commit:** `b14e4cc` | **Rule:** `client-localstorage-schema`
 
-Added `version: 1` to all 4 Zustand persist stores (auth, cart, room, theme).
+Added `version: 1` and version-0 migrations to all 4 Zustand persist stores (auth, cart, room, theme), preserving existing sessions and preferences during upgrade.
 
 ---
 
 ### ✅ 5.2 IIFE in JSX render path — FIXED
 
-**Commit:** `a7b3a79` | **Rule:** `rendering-hoist-jsx`
+**Commit:** `0164d6d` | **Rule:** `rendering-hoist-jsx`
 
 Replaced IIFE in render with `useMemo` for grouped/sorted items.
 
@@ -108,7 +103,7 @@ Replaced IIFE in render with `useMemo` for grouped/sorted items.
 
 ### ✅ 5.3–5.7 Zustand selector subscriptions — ALL FIXED
 
-**Commits:** `f5cf288`, `8f9aab0`, `b4246a0`, `25428d5`, `8b26eb1` | **Rule:** `rerender-derived-state`
+**Commits:** `360b231`, `5d1fdcd`, `b0ff70a`, `6f086cf`, `5cac4fb` | **Rule:** `rerender-derived-state`
 
 Fixed all 5 files that destructured entire store state:
 - `ItemCard.tsx` — subscribe to specific item's cart status
@@ -121,7 +116,7 @@ Fixed all 5 files that destructured entire store state:
 
 ### ✅ 6.2 `key={index}` in lists — FIXED
 
-**Commit:** `6c48eb2` | **Rule:** `rendering-conditional-render`
+**Commit:** `92c6e36` | **Rule:** `rendering-conditional-render`
 
 Changed `key={index}` to `key={tag.tag_name}` in ItemCard.
 
@@ -129,7 +124,7 @@ Changed `key={index}` to `key={tag.tag_name}` in ItemCard.
 
 ### ✅ 7.1 Repeated `localeCompare` in sort — FIXED
 
-**Commit:** `a7b3a79` (same as 5.2) | **Rule:** `js-cache-property-access`
+**Commit:** `0164d6d` (same as 5.2) | **Rule:** `js-cache-property-access`
 
 Locale string now computed once and cached.
 
@@ -137,7 +132,7 @@ Locale string now computed once and cached.
 
 ### ✅ 7.2 `new Date()` in render path — FIXED
 
-**Commit:** `33c50b4` | **Rule:** `js-cache-function-results`
+**Commit:** `b7f2a7e` | **Rule:** `js-cache-function-results`
 
 Wrapped date string computation in `useMemo` in both Cart and CartPopup.
 
@@ -145,7 +140,7 @@ Wrapped date string computation in `useMemo` in both Cart and CartPopup.
 
 ### ✅ 7.3 Scanner O(n*m) lookup — FIXED
 
-**Commit:** `55276ad` | **Rule:** `js-combine-iterations`
+**Commit:** `ea05836` | **Rule:** `js-combine-iterations`
 
 Pre-computed `Set` of scanned item IDs for O(1) reference status lookups.
 
@@ -153,7 +148,7 @@ Pre-computed `Set` of scanned item IDs for O(1) reference status lookups.
 
 ### ✅ 8.1 Event listener cleanup documentation — FIXED
 
-**Commit:** `6c48eb2` | **Rule:** `advanced-init-once`
+**Commit:** `92c6e36` | **Rule:** `advanced-init-once`
 
 Added documentation comment on `_init()` call-once invariant.
 
@@ -161,9 +156,9 @@ Added documentation comment on `_init()` call-once invariant.
 
 ### ✅ 8.2 `document.getElementById` for form input — FIXED
 
-**Commit:** `4a601df` | **Rule:** `advanced-event-handler-refs`
+**Commit:** `58c4fb4` | **Rule:** `advanced-event-handler-refs`
 
-Replaced with controlled inputs using `useState` in Cart and CartPopup.
+Replaced global DOM lookup with dialog-local input values in Cart and CartPopup. Values are captured within the imperative dialog lifecycle, avoiding stale React state and duplicate DOM IDs.
 
 ---
 
@@ -228,7 +223,7 @@ Emojis used as decorative elements in i18n strings and placeholders. No function
 
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Main bundle size | 1,218KB (gzip: 363KB) | 683KB (gzip: 228KB) | -44% / -37% |
+| Main bundle size | 1,218KB (gzip: 363KB) | 695KB (gzip: 233KB) | -43% / -36% |
 | Initial JS chunks | 1 file | 7+ files (on-demand) | Faster TTI |
 | ItemCart re-renders | All 100 on cart change | Only affected item | -99% |
 | Warehouse re-renders | Full page on cart change | Only count-dependent parts | Significant |
@@ -245,25 +240,25 @@ Emojis used as decorative elements in i18n strings and placeholders. No function
 
 | Commit | Description |
 |--------|-------------|
-| `0c8bda1` | Parallelize independent API calls in Warehouse page |
-| `949468f` | Parallelize notification and in-hand count fetches in MainLayout |
-| `6dcecb1` | Add lazy loading for heavy routes with React.lazy + Suspense |
-| `a7b3a79` | Memoize grouped and sorted item lists in Warehouse |
-| `f5cf288` | Fix ItemCart cart subscription to prevent cascade re-renders |
-| `8f9aab0` | Fix Warehouse page cart subscription |
-| `b4246a0` | Fix CartPopup granular cart store subscriptions |
-| `25428d5` | Fix Cart page granular cart store subscriptions |
-| `8b26eb1` | Fix Profile page authStore subscription |
-| `33c50b4` | Memoize new Date() calls in Cart and CartPopup |
-| `55276ad` | Pre-compute scanned item Set in Scanner for O(1) lookups |
-| `4a601df` | Replace document.getElementById with controlled inputs |
-| `903cbff` | Add request deduplication for notification count |
-| `5a7f6b2` | Add SWR caching for Warehouse, InHand, and MainLayout |
-| `4cef7b2` | Add schema versioning to all Zustand persist stores |
-| `6c48eb2` | Minor code quality improvements (key={index}, _init docs) |
-| `a1e2bb3` | Add hover/focus preloading for lazy route chunks |
-| `aa54518` | Update audit report with fix status |
-| `3857211` | Update audit report with CRITICAL/MEDIUM fix status |
+| `6d120d6` | Parallelize independent API calls in Warehouse page |
+| `a69d2db` | Parallelize notification and in-hand count fetches in MainLayout |
+| `cae9986` | Add lazy loading for heavy routes with React.lazy + Suspense |
+| `0164d6d` | Memoize grouped and sorted item lists in Warehouse |
+| `360b231` | Fix ItemCart cart subscription to prevent cascade re-renders |
+| `5d1fdcd` | Fix Warehouse page cart subscription |
+| `b0ff70a` | Fix CartPopup granular cart store subscriptions |
+| `6f086cf` | Fix Cart page granular cart store subscriptions |
+| `5cac4fb` | Fix Profile page authStore subscription |
+| `b7f2a7e` | Memoize new Date() calls in Cart and CartPopup |
+| `ea05836` | Pre-compute scanned item Set in Scanner for O(1) lookups |
+| `58c4fb4` | Remove global DOM lookup from title dialogs |
+| `45ac9e4` | Add request deduplication for notification count |
+| `1827dc0` | Add SWR caching for Warehouse, InHand, and MainLayout |
+| `b14e4cc` | Add schema versioning to all Zustand persist stores |
+| `92c6e36` | Minor code quality improvements (key={index}, _init docs) |
+| `7f22314` | Add hover/focus preloading for lazy route chunks |
+| `1f532f0` | Update audit report with fix status |
+| `9c62b88` | Update audit report with final issue counts |
 
 ---
 

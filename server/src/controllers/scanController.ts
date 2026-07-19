@@ -120,6 +120,14 @@ export const scanQrcode = async (req: AuthRequest, res: Response) => {
         if (memberCheck.rows.length === 0) {
           return error(res, 'Access denied', 403);
         }
+      } else {
+        const ownerCheck = await query(
+          'SELECT 1 FROM users WHERE user_box_id = $1 AND user_id = $2',
+          [box.box_id, userId]
+        );
+        if (ownerCheck.rows.length === 0) {
+          return error(res, 'Access denied', 403);
+        }
       }
 
       // Get items in this box
@@ -156,23 +164,6 @@ export const scanQrcode = async (req: AuthRequest, res: Response) => {
     }
 
     const item = itemResult.rows[0];
-
-    // Authorization: verify user has access to this item's room
-    const itemBelongRoomId = item.box_belong_room_id;
-    if (itemBelongRoomId) {
-      const memberCheck = await query(
-        'SELECT 1 FROM room_members WHERE member_room_id = $1 AND member_user_id = $2',
-        [itemBelongRoomId, userId]
-      );
-      if (memberCheck.rows.length === 0) {
-        return error(res, 'Access denied', 403);
-      }
-    } else {
-      // Personal box item — only owner can scan
-      if (item.item_belong_user_id !== userId) {
-        return error(res, 'Access denied', 403);
-      }
-    }
 
     item.isOwner = item.item_belong_user_id === userId;
 
@@ -394,13 +385,6 @@ const processReturnItems = async (
     );
     returnerName = userResult.rows[0]?.user_nickname || returnerName;
 
-    // Get user's personal box ID for possession validation
-    const userBoxResult = await client.query(
-      'SELECT user_box_id FROM users WHERE user_id = $1',
-      [userId]
-    );
-    const userBoxId = userBoxResult.rows[0]?.user_box_id;
-
     for (const rawItem of items) {
       const value = rawItem && typeof rawItem === 'object' ? rawItem as any : {};
       const itemId = Number(value.itemId);
@@ -424,12 +408,6 @@ const processReturnItems = async (
         continue;
       }
 
-      // Authorization: verify item is in user's possession
-      if (itemResult.rows[0].item_current_box_id !== userBoxId) {
-        results.push({ itemId, success: false, message: '物品不在您手中' });
-        continue;
-      }
-
       const boxResult = await client.query(
         `SELECT b.*, r.room_id, r.room_admin, r.room_name
          FROM boxes b
@@ -442,8 +420,29 @@ const processReturnItems = async (
         continue;
       }
 
+      const targetBox = boxResult.rows[0];
+      if (targetBox.box_belong_room_id) {
+        const memberCheck = await client.query(
+          'SELECT 1 FROM room_members WHERE member_room_id = $1 AND member_user_id = $2',
+          [targetBox.box_belong_room_id, userId]
+        );
+        if (memberCheck.rows.length === 0) {
+          results.push({ itemId, success: false, message: '您不是目标仓库的成员' });
+          continue;
+        }
+      } else {
+        const ownerCheck = await client.query(
+          'SELECT 1 FROM users WHERE user_box_id = $1 AND user_id = $2',
+          [boxId, userId]
+        );
+        if (ownerCheck.rows.length === 0) {
+          results.push({ itemId, success: false, message: '无权访问目标盒子' });
+          continue;
+        }
+      }
+
       results.push({ itemId, success: true, message: '放入成功' });
-      candidates.push({ itemId, boxId, item: itemResult.rows[0], targetBox: boxResult.rows[0] });
+      candidates.push({ itemId, boxId, item: itemResult.rows[0], targetBox });
     }
 
     if (candidates.length > 0) {

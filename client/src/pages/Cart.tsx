@@ -181,15 +181,13 @@ export default function Cart() {
     return t('cart.defaultTitle', { nickname: user?.user_nickname || 'User', date: dateStr });
   }, [locale, user?.user_nickname, t]);
 
-  const [editTitleInput, setEditTitleInput] = useState('');
-
   const handleEditTitle = async () => {
-    setEditTitleInput(orderTitle || '');
+    let editedTitle = orderTitle || '';
     const result = await Dialog.confirm({
       title: t('cart.editTitle'),
       content: <input
-        value={editTitleInput}
-        onChange={(e) => setEditTitleInput(e.target.value)}
+        defaultValue={editedTitle}
+        onChange={(e) => { editedTitle = e.target.value; }}
         placeholder={t('cart.titlePlaceholder')}
         style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--app-color-border)', borderRadius: 'var(--app-radius-s)', fontSize: '14px', outline: 'none' }}
       />,
@@ -198,7 +196,7 @@ export default function Cart() {
     });
 
     if (result) {
-      const newTitle = editTitleInput.trim();
+      const newTitle = editedTitle.trim();
       setOrderTitle(newTitle || undefined);
     }
   };

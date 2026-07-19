@@ -5,6 +5,7 @@ import { success, error } from '../utils/response';
 import { AuthRequest } from '../middlewares/auth';
 import { createNotification } from './notificationController';
 import { isRoomAdmin } from '../utils/admin';
+import { hasItemAccess } from '../utils/access';
 
 // 获取用户的预约订单列表
 export const getOrders = async (req: AuthRequest, res: Response) => {
@@ -462,25 +463,8 @@ export const getItemReservations = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { includePast } = req.query;
 
-    // Authorization: verify user has access to this item
-    const itemAccess = await query(
-      `SELECT i.item_belong_user_id, b.box_belong_room_id
-       FROM items i
-       JOIN boxes b ON i.item_belong_box_id = b.box_id
-       WHERE i.item_id = $1`,
-      [id]
-    );
-    if (itemAccess.rows.length > 0) {
-      const { box_belong_room_id } = itemAccess.rows[0];
-      if (box_belong_room_id) {
-        const memberCheck = await query(
-          'SELECT 1 FROM room_members WHERE member_room_id = $1 AND member_user_id = $2',
-          [box_belong_room_id, userId]
-        );
-        if (memberCheck.rows.length === 0) {
-          return error(res, 'Access denied', 403);
-        }
-      }
+    if (!userId || !await hasItemAccess(userId, Number(id))) {
+      return error(res, 'Access denied', 403);
     }
 
     let sql = `
@@ -522,12 +506,32 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       await client.query('BEGIN');
 
       // Lock all items upfront to prevent concurrent reservation creation
-      const itemIds = items.map(i => i.itemId).filter(id => Number.isInteger(id) && id > 0);
-      if (itemIds.length > 0) {
-        await client.query(
+      const itemIds = items.map(i => Number(i.itemId));
+      const uniqueItemIds = [...new Set(itemIds)].sort((a, b) => a - b);
+      if (
+        itemIds.some(id => !Number.isInteger(id) || id <= 0)
+        || uniqueItemIds.length !== itemIds.length
+      ) {
+        await client.query('ROLLBACK');
+        return error(res, 'Invalid or duplicate item IDs');
+      }
+
+      if (uniqueItemIds.length > 0) {
+        const lockedItems = await client.query(
           `SELECT item_id FROM items WHERE item_id = ANY($1) FOR UPDATE`,
-          [itemIds]
+          [uniqueItemIds]
         );
+        if (lockedItems.rows.length !== uniqueItemIds.length) {
+          await client.query('ROLLBACK');
+          return error(res, 'Item not found', 404);
+        }
+      }
+
+      for (const itemId of uniqueItemIds) {
+        if (!userId || !await hasItemAccess(userId, itemId, client)) {
+          await client.query('ROLLBACK');
+          return error(res, 'Access denied', 403);
+        }
       }
 
       // Check all items for conflicts (now safe from concurrent inserts due to locks)

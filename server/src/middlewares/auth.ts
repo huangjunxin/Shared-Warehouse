@@ -21,6 +21,15 @@ const getJwtSecret = (): string => {
   return secret;
 };
 
+const isTokenActive = async (decoded: JwtPayload): Promise<boolean> => {
+  const userResult = await query(
+    'SELECT token_version FROM users WHERE user_id = $1',
+    [decoded.userId]
+  );
+  const tokenVersion = decoded.tokenVersion ?? 0;
+  return userResult.rows.length > 0 && userResult.rows[0].token_version === tokenVersion;
+};
+
 export const auth = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
@@ -34,15 +43,8 @@ export const auth = async (req: AuthRequest, res: Response, next: NextFunction) 
 
     const decoded = jwt.verify(token, secret) as JwtPayload;
 
-    // Verify token version (revocation check)
-    if (decoded.tokenVersion !== undefined) {
-      const userResult = await query(
-        'SELECT token_version FROM users WHERE user_id = $1',
-        [decoded.userId]
-      );
-      if (userResult.rows.length === 0 || userResult.rows[0].token_version !== decoded.tokenVersion) {
-        return error(res, 'Token has been revoked', 401);
-      }
+    if (!await isTokenActive(decoded)) {
+      return error(res, 'Token has been revoked', 401);
     }
 
     req.user = decoded;
@@ -53,7 +55,7 @@ export const auth = async (req: AuthRequest, res: Response, next: NextFunction) 
   }
 };
 
-export const optionalAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -61,6 +63,9 @@ export const optionalAuth = (req: AuthRequest, res: Response, next: NextFunction
       const token = authHeader.split(' ')[1];
       const secret = getJwtSecret();
       const decoded = jwt.verify(token, secret) as JwtPayload;
+      if (!await isTokenActive(decoded)) {
+        return error(res, 'Token has been revoked', 401);
+      }
       req.user = decoded;
     }
 

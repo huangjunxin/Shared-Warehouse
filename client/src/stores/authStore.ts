@@ -37,6 +37,7 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       version: 1,
+      migrate: (persistedState) => persistedState as AuthState,
     }
   )
 );

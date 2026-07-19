@@ -178,10 +178,11 @@ export default function Warehouse() {
   const [detailVisible, setDetailVisible] = useState(false);
   const [cartVisible, setCartVisible] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const searchInputRef = useRef<InputRef>(null);
 
-  const itemSearchKey = searchText || undefined;
+  const itemSearchKey = searchQuery || undefined;
   const itemKey = currentRoom
     ? ['/items', { params: { roomId: currentRoom.room_id, boxId: filters.boxId === 'out-of-stock' ? undefined : filters.boxId, tagId: filters.tagId, search: itemSearchKey } }]
     : null;
@@ -193,7 +194,7 @@ export default function Warehouse() {
   );
 
   const joinRequestKey = currentRoom?.is_admin
-    ? [`/rooms/${currentRoom.room_id}/join-requests`]
+    ? `/rooms/${currentRoom.room_id}/join-requests`
     : null;
 
   const { data: joinRequestsData } = useSWR(
@@ -335,17 +336,20 @@ export default function Warehouse() {
             value={searchText}
             onChange={setSearchText}
             placeholder={t('warehouse.searchPlaceholder')}
-            onSearch={() => {
+            onSearch={(value) => {
+              setSearchQuery(value.trim());
               setShowSearch(false);
             }}
             onBlur={() => {
               if (!searchText) {
+                setSearchQuery('');
                 setShowSearch(false);
               }
             }}
             showCancelButton
             onCancel={() => {
               setSearchText('');
+              setSearchQuery('');
               setShowSearch(false);
             }}
           />
