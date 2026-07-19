@@ -166,7 +166,7 @@ export default function Warehouse() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { currentRoom, rooms } = useRoomStore();
-  const { items: cartItems } = useCartStore();
+  const cartItemCount = useCartStore((s) => s.items.length);
   const [inStockItems, setInStockItems] = useState<any[]>([]);
   const [outOfStockItems, setOutOfStockItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -423,7 +423,7 @@ export default function Warehouse() {
       </WarehouseMain>
 
       <FAB>
-        {cartItems.length > 0 && (
+        {cartItemCount > 0 && (
           <FABButton onClick={() => setCartVisible(true)}>
             <ShopbagOutline />
             <span
@@ -442,7 +442,7 @@ export default function Warehouse() {
                 justifyContent: 'center',
               }}
             >
-              {cartItems.length}
+              {cartItemCount}
             </span>
           </FABButton>
         )}
