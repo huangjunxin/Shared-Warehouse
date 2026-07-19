@@ -166,8 +166,8 @@ export default function ItemCard({ item, onClick, showStockStatus = true, showCa
         )}
         {item.tags && item.tags.length > 0 && (
           <ItemTags>
-            {item.tags.slice(0, 2).map((tag, index) => (
-              <Tag key={index}>{tag.tag_name}</Tag>
+            {item.tags.slice(0, 2).map((tag) => (
+              <Tag key={tag.tag_name}>{tag.tag_name}</Tag>
             ))}
           </ItemTags>
         )}
