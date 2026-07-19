@@ -237,7 +237,16 @@ interface CartPopupProps {
 export default function CartPopup({ visible, onClose }: CartPopupProps) {
   const { t, i18n } = useTranslation();
   const { user } = useAuthStore();
-  const { items, startTime, endTime, setTime, removeItem, clearCart, orderTitle, setOrderTitle, updateConflict, clearConflicts } = useCartStore();
+  const items = useCartStore((s) => s.items);
+  const startTime = useCartStore((s) => s.startTime);
+  const endTime = useCartStore((s) => s.endTime);
+  const orderTitle = useCartStore((s) => s.orderTitle);
+  const setTime = useCartStore((s) => s.setTime);
+  const removeItem = useCartStore((s) => s.removeItem);
+  const clearCart = useCartStore((s) => s.clearCart);
+  const setOrderTitle = useCartStore((s) => s.setOrderTitle);
+  const updateConflict = useCartStore((s) => s.updateConflict);
+  const clearConflicts = useCartStore((s) => s.clearConflicts);
   const [loading, setLoading] = useState(false);
   const [checkingConflicts, setCheckingConflicts] = useState(false);
 
