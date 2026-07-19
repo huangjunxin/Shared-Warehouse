@@ -452,7 +452,33 @@ export const getHistory = async (req: AuthRequest, res: Response) => {
 
 export const getComments = async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.user?.userId;
     const { id } = req.params;
+
+    // Authorization: verify user has access to this item
+    const itemAccess = await query(
+      `SELECT i.item_belong_user_id, b.box_belong_room_id
+       FROM items i
+       JOIN boxes b ON i.item_belong_box_id = b.box_id
+       WHERE i.item_id = $1`,
+      [id]
+    );
+    if (itemAccess.rows.length > 0) {
+      const { box_belong_room_id } = itemAccess.rows[0];
+      if (box_belong_room_id) {
+        const memberCheck = await query(
+          'SELECT 1 FROM room_members WHERE member_room_id = $1 AND member_user_id = $2',
+          [box_belong_room_id, userId]
+        );
+        if (memberCheck.rows.length === 0) {
+          return error(res, 'Access denied', 403);
+        }
+      } else {
+        if (itemAccess.rows[0].item_belong_user_id !== userId) {
+          return error(res, 'Access denied', 403);
+        }
+      }
+    }
 
     const result = await query(
       `SELECT c.*, u.user_nickname, u.user_avatar
@@ -482,6 +508,31 @@ export const addComment = async (req: AuthRequest, res: Response) => {
 
     if (content.length > 120) {
       return error(res, 'Comment must be 120 characters or less');
+    }
+
+    // Authorization: verify user has access to this item
+    const itemAccess = await query(
+      `SELECT i.item_belong_user_id, b.box_belong_room_id
+       FROM items i
+       JOIN boxes b ON i.item_belong_box_id = b.box_id
+       WHERE i.item_id = $1`,
+      [id]
+    );
+    if (itemAccess.rows.length > 0) {
+      const { item_belong_user_id, box_belong_room_id } = itemAccess.rows[0];
+      if (box_belong_room_id) {
+        const memberCheck = await query(
+          'SELECT 1 FROM room_members WHERE member_room_id = $1 AND member_user_id = $2',
+          [box_belong_room_id, userId]
+        );
+        if (memberCheck.rows.length === 0) {
+          return error(res, 'Access denied', 403);
+        }
+      } else {
+        if (item_belong_user_id !== userId) {
+          return error(res, 'Access denied', 403);
+        }
+      }
     }
 
     const createTime = Date.now();
