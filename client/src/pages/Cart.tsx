@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useCartStore } from '../stores/cartStore';
 import { useAuthStore } from '../stores/authStore';
 import { reservationApi } from '../services/api';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import TrashIcon from '../components/icons/TrashIcon';
 
 function EditIcon({ size = 16 }: { size?: number }) {
@@ -175,8 +175,11 @@ export default function Cart() {
   const setOrderTitle = useCartStore((s) => s.setOrderTitle);
   const [loading, setLoading] = useState(false);
 
-  const dateStr = new Date().toLocaleDateString(i18n.language === 'en-US' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit' }).replace(/\//g, '');
-  const defaultTitle = t('cart.defaultTitle', { nickname: user?.user_nickname || 'User', date: dateStr });
+  const locale = i18n.language === 'en-US' ? 'en-US' : 'zh-CN';
+  const defaultTitle = useMemo(() => {
+    const dateStr = new Date().toLocaleDateString(locale, { month: '2-digit', day: '2-digit' }).replace(/\//g, '');
+    return t('cart.defaultTitle', { nickname: user?.user_nickname || 'User', date: dateStr });
+  }, [locale, user?.user_nickname, t]);
 
   const handleEditTitle = async () => {
     const result = await Dialog.confirm({

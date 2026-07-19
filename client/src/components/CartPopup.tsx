@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Popup, Button, DatePicker, Dialog, Toast } from 'antd-mobile';
 import styled from 'styled-components';
 import { useTranslation } from 'react-i18next';
@@ -252,10 +252,10 @@ export default function CartPopup({ visible, onClose }: CartPopupProps) {
 
   const locale = i18n.language === 'en-US' ? 'en-US' : 'zh-CN';
 
-  const defaultTitle = t('cart.defaultTitle', {
-    nickname: user?.user_nickname || 'User',
-    date: new Date().toLocaleDateString(locale, { month: '2-digit', day: '2-digit' }).replace('/', ''),
-  });
+  const defaultTitle = useMemo(() => {
+    const dateStr = new Date().toLocaleDateString(locale, { month: '2-digit', day: '2-digit' }).replace('/', '');
+    return t('cart.defaultTitle', { nickname: user?.user_nickname || 'User', date: dateStr });
+  }, [locale, user?.user_nickname, t]);
 
   const handleEditTitle = async () => {
     const result = await Dialog.confirm({
