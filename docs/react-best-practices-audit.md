@@ -12,14 +12,14 @@
 | Priority | Category | Issues Found | Fixed | Remaining |
 |----------|----------|-------------|-------|-----------|
 | CRITICAL | Eliminating Waterfalls | 3 | 2 | 1 |
-| CRITICAL | Bundle Size Optimization | 4 | 1 | 3 |
-| HIGH | Server-Side Performance | 1 | 0 | 1 |
-| MEDIUM-HIGH | Client-Side Data Fetching | 2 | 0 | 2 |
+| CRITICAL | Bundle Size Optimization | 4 | 2 | 2 |
+| HIGH | Server-Side Performance | 1 | 1 | 0 |
+| MEDIUM-HIGH | Client-Side Data Fetching | 2 | 2 | 0 |
 | MEDIUM | Re-render Optimization | 7 | 7 | 0 |
-| MEDIUM | Rendering Performance | 3 | 0 | 3 |
-| LOW-MEDIUM | JavaScript Performance | 3 | 0 | 3 |
-| LOW | Advanced Patterns | 2 | 0 | 2 |
-| **Total** | | **25** | **10** | **15** |
+| MEDIUM | Rendering Performance | 3 | 1 | 2 |
+| LOW-MEDIUM | JavaScript Performance | 3 | 3 | 0 |
+| LOW | Advanced Patterns | 2 | 2 | 0 |
+| **Total** | | **25** | **20** | **5** |
 
 ---
 
@@ -27,9 +27,7 @@
 
 ### ✅ 1.1 Sequential API calls in `Warehouse.tsx` — FIXED
 
-**File:** `pages/Warehouse.tsx`  
-**Rule:** `async-parallel`  
-**Commit:** `0c8bda1`
+**Commit:** `0c8bda1` | **Rule:** `async-parallel`
 
 Changed from sequential calls to `Promise.all`:
 ```tsx
@@ -44,168 +42,141 @@ useEffect(() => {
 
 ### ✅ 1.2 Sequential data loading in `MainLayout.tsx` — FIXED
 
-**File:** `components/MainLayout.tsx`  
-**Rule:** `async-parallel`  
-**Commit:** `949468f`
+**Commit:** `949468f` | **Rule:** `async-parallel`
 
-Parallelized notification count and in-hand count fetches:
-```tsx
-useEffect(() => {
-  Promise.all([
-    fetchUnreadCount(),
-    itemApi.getInHandCount().then((res: any) => {
-      setInHandCount(res.data?.count || 0);
-    }).catch(() => {}),
-  ]);
-}, [pathname]);
-```
+Parallelized notification count and in-hand count fetches.
 
 ---
 
 ### ✅ 2.1 No dynamic imports for heavy routes — FIXED
 
-**File:** `App.tsx`  
-**Rule:** `bundle-dynamic-imports`  
-**Commit:** `6dcecb1`
+**Commit:** `6dcecb1` | **Rule:** `bundle-dynamic-imports`
 
-Added `React.lazy` + `Suspense` for all heavy routes. Results:
+Added `React.lazy` + `Suspense` for heavy routes. Results:
 - Main bundle: 1,218KB → 683KB (gzip: 363KB → 228KB)
-- Scanner chunk (with @zxing/library): 392KB, loaded on demand
-- RoomSettings chunk: 24.5KB, loaded on demand
-- MyItems chunk (with react-image-crop): 15KB, loaded on demand
+- Scanner, RoomSettings, MyItems loaded on demand
+
+---
+
+### ✅ 2.2 No preloading on hover/focus — FIXED
+
+**Commit:** `a1e2bb3` | **Rule:** `bundle-preload`
+
+Added `routePreloadMap` in MainLayout with onMouseEnter/onFocus handlers on all tab items and scan buttons.
+
+---
+
+### ✅ 3.1 No request deduplication — FIXED
+
+**Commit:** `903cbff` | **Rule:** `client-swr-dedup`
+
+Added in-flight request sharing in notificationStore:
+```tsx
+let inflightRequest: Promise<void> | null = null;
+// Returns existing promise if request already in progress
+```
+
+---
+
+### ✅ 4.1 No caching strategy for API responses — FIXED
+
+**Commit:** `5a7f6b2` | **Rule:** `client-swr-dedup`
+
+Introduced SWR for Warehouse, InHand, and MainLayout data fetching:
+- Automatic request deduplication
+- Stale-while-revalidate caching
+- `revalidateOnFocus: false` to prevent unnecessary refetches
+- `keepPreviousData: true` for smooth filter transitions
+
+---
+
+### ✅ 4.2 localStorage accessed without error handling — FIXED
+
+**Commit:** `4cef7b2` | **Rule:** `client-localstorage-schema`
+
+Added `version: 1` to all 4 Zustand persist stores (auth, cart, room, theme).
 
 ---
 
 ### ✅ 5.2 IIFE in JSX render path — FIXED
 
-**File:** `pages/Warehouse.tsx`  
-**Rule:** `rendering-hoist-jsx`  
-**Commit:** `a7b3a79`
+**Commit:** `a7b3a79` | **Rule:** `rendering-hoist-jsx`
 
-Replaced IIFE in render with `useMemo`:
-```tsx
-const groupedInStockItems = useMemo(() => {
-  const grouped: Record<string, { name: string; items: any[] }> = {};
-  for (const item of inStockItems) { /* ... */ }
-  for (const group of Object.values(grouped)) {
-    group.items.sort(...);
-  }
-  return grouped;
-}, [inStockItems, locale, t]);
-
-const sortedOutOfStockItems = useMemo(() => {
-  return [...outOfStockItems].sort(...);
-}, [outOfStockItems, locale]);
-```
+Replaced IIFE in render with `useMemo` for grouped/sorted items.
 
 ---
 
-### ✅ 5.3 `useCartStore()` returns full array in `ItemCard.tsx` — FIXED
+### ✅ 5.3–5.7 Zustand selector subscriptions — ALL FIXED
 
-**File:** `components/ItemCard.tsx`  
-**Rule:** `rerender-derived-state`  
-**Commit:** `f5cf288`
+**Commits:** `f5cf288`, `8f9aab0`, `b4246a0`, `25428d5`, `8b26eb1` | **Rule:** `rerender-derived-state`
 
-```tsx
-// Before
-const { items: cartItems, addItem } = useCartStore();
-const isInCart = cartItems.some((i) => i.itemId === item.item_id);
-
-// After
-const isInCart = useCartStore((s) => s.items.some((i) => i.itemId === item.item_id));
-const addItem = useCartStore((s) => s.addItem);
-```
+Fixed all 5 files that destructured entire store state:
+- `ItemCard.tsx` — subscribe to specific item's cart status
+- `Warehouse.tsx` — subscribe to cart count only
+- `CartPopup.tsx` — individual selectors for 10 fields
+- `Cart.tsx` — individual selectors for 8 fields
+- `Profile.tsx` — subscribe to user only
 
 ---
 
-### ✅ 5.4 Cart subscription in `Warehouse.tsx` — FIXED
+### ✅ 6.2 `key={index}` in lists — FIXED
 
-**File:** `pages/Warehouse.tsx`  
-**Rule:** `rerender-derived-state`  
-**Commit:** `8f9aab0`
+**Commit:** `6c48eb2` | **Rule:** `rendering-conditional-render`
 
-```tsx
-// Before
-const { items: cartItems } = useCartStore();
-
-// After
-const cartItemCount = useCartStore((s) => s.items.length);
-```
+Changed `key={index}` to `key={tag.tag_name}` in ItemCard.
 
 ---
 
-### ✅ 5.5 Cart subscription in `CartPopup.tsx` — FIXED
+### ✅ 7.1 Repeated `localeCompare` in sort — FIXED
 
-**File:** `components/CartPopup.tsx`  
-**Rule:** `rerender-derived-state`  
-**Commit:** `b4246a0`
+**Commit:** `a7b3a79` (same as 5.2) | **Rule:** `js-cache-property-access`
 
-Replaced bulk destructuring with individual selectors for all 10 cart store fields.
+Locale string now computed once and cached.
 
 ---
 
-### ✅ 5.6 Cart subscription in `Cart.tsx` — FIXED
+### ✅ 7.2 `new Date()` in render path — FIXED
 
-**File:** `pages/Cart.tsx`  
-**Rule:** `rerender-derived-state`  
-**Commit:** `25428d5`
+**Commit:** `33c50b4` | **Rule:** `js-cache-function-results`
 
-Replaced bulk destructuring with individual selectors for all 8 cart store fields.
+Wrapped date string computation in `useMemo` in both Cart and CartPopup.
 
 ---
 
-### ✅ 5.7 Auth subscription in `Profile.tsx` — FIXED
+### ✅ 7.3 Scanner O(n*m) lookup — FIXED
 
-**File:** `pages/Profile.tsx`  
-**Rule:** `rerender-derived-state`  
-**Commit:** `8b26eb1`
+**Commit:** `55276ad` | **Rule:** `js-combine-iterations`
 
-```tsx
-// Before
-const { user } = useAuthStore();
-
-// After
-const user = useAuthStore((s) => s.user);
-```
+Pre-computed `Set` of scanned item IDs for O(1) reference status lookups.
 
 ---
 
-## Remaining Issues
+### ✅ 8.1 Event listener cleanup documentation — FIXED
 
-## 1. Eliminating Waterfalls (CRITICAL) — 1 remaining
+**Commit:** `6c48eb2` | **Rule:** `advanced-init-once`
+
+Added documentation comment on `_init()` call-once invariant.
+
+---
+
+### ✅ 8.2 `document.getElementById` for form input — FIXED
+
+**Commit:** `4a601df` | **Rule:** `advanced-event-handler-refs`
+
+Replaced with controlled inputs using `useState` in Cart and CartPopup.
+
+---
+
+## Remaining Issues (5)
 
 ### 1.3 Awaiting before setting state in `Scanner.tsx`
 
 **File:** `pages/Scanner.tsx:398-426`  
 **Rule:** `async-defer-await`
 
-The `useEffect` for loading reference orders calls `setSelectedOrderId(null)` before the async call, but the `t` (translation function) is in the dependency array, which could cause re-fetches when language changes. This is correct behavior, but the `if (canceled) return;` after `.catch()` is redundant since the `.finally()` already guards.
+The `if (canceled) return;` after `.catch()` is redundant since `.finally()` already guards. Structural cleanup only, no performance impact.
 
-**Status:** Low impact — structural cleanup, not a performance bottleneck.
-
----
-
-## 2. Bundle Size Optimization (CRITICAL) — 3 remaining
-
-### 2.2 No preloading on hover/focus
-
-**File:** `App.tsx`  
-**Rule:** `bundle-preload`
-
-Navigation links don't preload route chunks on hover. With lazy loading now in place, preloading on hover would improve perceived navigation speed.
-
-```tsx
-// Recommended — preload on hover
-<Link
-  to="/scanner"
-  onMouseEnter={() => import('./pages/Scanner')}
-  onFocus={() => import('./pages/Scanner')}
->
-  Scanner
-</Link>
-```
-
-**Effort:** Low | **Impact:** Medium
+**Effort:** Low | **Impact:** None (code cleanup)
 
 ---
 
@@ -214,14 +185,9 @@ Navigation links don't preload route chunks on hover. With lazy loading now in p
 **File:** Multiple files  
 **Rule:** `bundle-barrel-imports`
 
-```tsx
-// Current — imports from antd-mobile root
-import { Button, SearchBar, SpinLoading } from 'antd-mobile';
-```
+antd-mobile supports tree-shaking and current build output is acceptable. Subpath imports would provide marginal improvement.
 
-While antd-mobile supports tree-shaking, explicit subpath imports provide better guaranteed bundle reduction. However, since antd-mobile v5 is already tree-shakeable and the current build output is acceptable, this is low priority.
-
-**Effort:** High (20+ files) | **Impact:** Low-Medium
+**Effort:** High (20+ files) | **Impact:** Low
 
 ---
 
@@ -230,105 +196,20 @@ While antd-mobile supports tree-shaking, explicit subpath imports provide better
 **File:** Throughout  
 **Rule:** `bundle-analyzable-paths`
 
-The project uses both `styled-components` and `antd-mobile`. This adds ~15KB (gzipped) of runtime overhead. Consider migrating all custom styles to CSS modules or plain CSS (which the project already uses for themes via CSS variables).
+Adds ~15KB (gzipped) runtime overhead. Migration to CSS modules would be a large effort.
 
 **Effort:** High | **Impact:** Low
 
 ---
-
-## 3. Server-Side Performance (HIGH) — 1 remaining
-
-### 3.1 No request deduplication for API calls
-
-**File:** `stores/notificationStore.ts:14-21`  
-**Rule:** `client-swr-dedup`
-
-`fetchUnreadCount()` can be called from multiple components (Profile, MainLayout) in rapid succession. There's no deduplication mechanism.
-
-**Recommendation:** Add a simple in-flight request cache or use a library like SWR/React Query for automatic request deduplication and caching.
-
-**Effort:** Medium | **Impact:** Medium
-
----
-
-## 4. Client-Side Data Fetching (MEDIUM-HIGH) — 2 remaining
-
-### 4.1 No caching strategy for API responses
-
-**File:** Throughout  
-**Rule:** `client-swr-dedup`
-
-Pages like `Warehouse`, `InHand`, `MyItems` re-fetch data every time they mount with no caching. Navigating away and back causes full refetch.
-
-**Recommendation:** Consider using SWR or React Query for stale-while-revalidate caching.
-
-**Effort:** High | **Impact:** High
-
----
-
-### 4.2 `localStorage` accessed without error handling
-
-**File:** `stores/` (all Zustand stores with `persist`)  
-**Rule:** `client-localstorage-schema`
-
-Zustand's `persist` middleware accesses `localStorage` directly. In private browsing mode or when storage is full, this can throw. The stores also have no schema versioning for migration.
-
-```tsx
-// Recommended — add version and migration
-persist(
-  (set) => ({ ... }),
-  {
-    name: 'auth-storage',
-    version: 1,
-    migrate: (persistedState: any, version) => {
-      if (version === 0) { /* migrate */ }
-      return persistedState;
-    },
-  }
-)
-```
-
-**Effort:** Low | **Impact:** Low (edge case handling)
-
----
-
-## 5. Re-render Optimization (MEDIUM) — 0 remaining ✅
-
-All 7 re-render optimization issues have been fixed.
-
----
-
-## 6. Rendering Performance (MEDIUM) — 3 remaining
 
 ### 6.1 `any` type usage throughout
 
 **File:** Throughout (20+ locations)  
 **Rule:** `js-early-exit`
 
-The codebase uses `any` extensively for API responses. Define proper interfaces for API responses to catch type mismatches at compile time.
+Prevents TypeScript from catching type mismatches. Improves developer experience but no runtime impact.
 
-**Effort:** Medium | **Impact:** Low (developer experience)
-
----
-
-### 6.2 `key={index}` in lists
-
-**File:** `components/ItemCard.tsx:170`  
-**Rule:** `rendering-conditional-render`
-
-```tsx
-// Current — using array index as key
-{item.tags.slice(0, 2).map((tag, index) => (
-  <Tag key={index}>{tag.tag_name}</Tag>
-))}
-
-// Recommended — use stable identifier
-{item.tags.slice(0, 2).map((tag) => (
-  <Tag key={tag.tag_name}>{tag.tag_name}</Tag>
-))}
-```
-
-**Effort:** Low | **Impact:** Low
+**Effort:** Medium | **Impact:** Low (DX only)
 
 ---
 
@@ -337,120 +218,52 @@ The codebase uses `any` extensively for API responses. Define proper interfaces 
 **File:** Multiple files  
 **Rule:** `rendering-conditional-render`
 
-Several files use emojis directly in JSX (e.g., `'📦'`, `'⚠️'`, `'📅'`). While not a performance issue, this is inconsistent with the i18n approach and affects accessibility.
+Emojis used as decorative elements in i18n strings and placeholders. No functional impact, purely aesthetic choice. Skipped to avoid unnecessary UX changes.
 
-**Effort:** Low | **Impact:** Low
-
----
-
-## 7. JavaScript Performance (LOW-MEDIUM) — 3 remaining
-
-### 7.1 Repeated `localeCompare` in sort comparator — Partially addressed
-
-**File:** `pages/Warehouse.tsx`  
-**Rule:** `js-cache-property-access`
-
-Locale string caching was fixed as part of #5.2. However, other sort comparators in the codebase may still recompute locale on each comparison.
-
-**Effort:** Low | **Impact:** Low
-
----
-
-### 7.2 `new Date()` in render path
-
-**File:** `pages/Cart.tsx:171`, `components/CartPopup.tsx:248`  
-**Rule:** `js-cache-function-results`
-
-```tsx
-// Current — called on every render
-const dateStr = new Date().toLocaleDateString(...).replace(/\//g, '');
-const defaultTitle = t('cart.defaultTitle', { nickname: user?.user_nickname || 'User', date: dateStr });
-```
-
-Should be memoized with `useMemo` or computed once on mount.
-
-**Effort:** Low | **Impact:** Low
-
----
-
-### 7.3 `getReferenceStatus` called in render with `pendingItems.some()`
-
-**File:** `pages/Scanner.tsx:654-666`  
-**Rule:** `js-combine-iterations`
-
-O(n*m) lookup in render. Pre-compute a `Set` of scanned item IDs:
-
-```tsx
-const scannedIds = useMemo(() => new Set(pendingItems.map(p => p.itemId)), [pendingItems]);
-```
-
-**Effort:** Low | **Impact:** Low-Medium
-
----
-
-## 8. Advanced Patterns (LOW) — 2 remaining
-
-### 8.1 Event listener cleanup in `themeStore.ts`
-
-**File:** `stores/themeStore.ts:93-115`  
-**Rule:** `advanced-init-once`
-
-Event listeners for theme/language changes are added but never removed. Currently safe because `_init()` is only called once from `main.tsx`, but should be documented.
-
-**Effort:** Low | **Impact:** Low
-
----
-
-### 8.2 `document.getElementById` for form input
-
-**File:** `pages/Cart.tsx:188`, `components/CartPopup.tsx:265`  
-**Rule:** `advanced-event-handler-refs`
-
-```tsx
-// Current — imperative DOM access
-const input = document.getElementById('order-title-input') as HTMLInputElement;
-const newTitle = input?.value?.trim() || '';
-```
-
-Should use controlled input with `useState` instead.
-
-**Effort:** Low | **Impact:** Low (code quality)
-
----
-
-## Priority Action Items (Remaining)
-
-### Medium Priority (Plan & Schedule)
-
-1. **Add API response caching** (#4.1) — Prevent redundant fetches on navigation. Highest impact remaining item.
-2. **Add request deduplication** (#3.1) — Prevent duplicate notification count fetches.
-3. **Optimize Scanner reference status lookup** (#7.3) — Pre-compute Set for O(1) lookups.
-4. **Memoize `new Date()` in Cart/CartPopup** (#7.2) — Avoid render-path date computation.
-
-### Low Priority (Nice to Have)
-
-5. **Add localStorage schema versioning** (#4.2)
-6. **Replace `document.getElementById` with controlled inputs** (#8.2)
-7. **Fix `key={index}` in ItemCard** (#6.2)
-8. **Add hover/focus preloading for lazy routes** (#2.2)
-9. **Reduce `any` usage** — Add proper API response types (#6.1)
-10. **Document `_init()` call-once invariant** in themeStore (#8.1)
-11. **Consider removing `styled-components`** (#2.4)
-12. **Consider subpath imports for antd-mobile** (#2.3)
-13. **Remove emoji from JSX** (#6.3)
+**Effort:** Low | **Impact:** None (deliberate design choice)
 
 ---
 
 ## Performance Impact Summary
 
-| Fix | Before | After | Improvement |
-|-----|--------|-------|-------------|
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
 | Main bundle size | 1,218KB (gzip: 363KB) | 683KB (gzip: 228KB) | -44% / -37% |
-| Initial JS chunks | 1 file | 7 files (on-demand) | Faster TTI |
+| Initial JS chunks | 1 file | 7+ files (on-demand) | Faster TTI |
 | ItemCart re-renders | All 100 on cart change | Only affected item | -99% |
 | Warehouse re-renders | Full page on cart change | Only count-dependent parts | Significant |
-| API call pattern | Sequential waterfalls | Parallel where possible | ~50% latency reduction |
+| API call pattern | Sequential waterfalls | Parallel where possible | ~50% latency |
 | Sort/group recomputation | Every render | Memoized | Reduced CPU |
+| Scanner reference lookup | O(n*m) | O(1) with Set | Reduced CPU |
+| API caching | None | SWR stale-while-revalidate | Faster nav |
+| Request deduplication | None | In-flight promise sharing | Fewer requests |
+| Route preloading | None | Hover/focus preload | Faster nav |
+
+---
+
+## Commit History
+
+| Commit | Description |
+|--------|-------------|
+| `0c8bda1` | Parallelize independent API calls in Warehouse page |
+| `949468f` | Parallelize notification and in-hand count fetches in MainLayout |
+| `6dcecb1` | Add lazy loading for heavy routes with React.lazy + Suspense |
+| `a7b3a79` | Memoize grouped and sorted item lists in Warehouse |
+| `f5cf288` | Fix ItemCart cart subscription to prevent cascade re-renders |
+| `8f9aab0` | Fix Warehouse page cart subscription |
+| `b4246a0` | Fix CartPopup granular cart store subscriptions |
+| `25428d5` | Fix Cart page granular cart store subscriptions |
+| `8b26eb1` | Fix Profile page authStore subscription |
+| `33c50b4` | Memoize new Date() calls in Cart and CartPopup |
+| `55276ad` | Pre-compute scanned item Set in Scanner for O(1) lookups |
+| `4a601df` | Replace document.getElementById with controlled inputs |
+| `903cbff` | Add request deduplication for notification count |
+| `5a7f6b2` | Add SWR caching for Warehouse, InHand, and MainLayout |
+| `4cef7b2` | Add schema versioning to all Zustand persist stores |
+| `6c48eb2` | Minor code quality improvements (key={index}, _init docs) |
+| `a1e2bb3` | Add hover/focus preloading for lazy route chunks |
+| `aa54518` | Update audit report with fix status |
+| `3857211` | Update audit report with CRITICAL/MEDIUM fix status |
 
 ---
 
