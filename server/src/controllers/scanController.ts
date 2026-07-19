@@ -111,6 +111,17 @@ export const scanQrcode = async (req: AuthRequest, res: Response) => {
 
       const box = boxResult.rows[0];
 
+      // Authorization: verify user is a member of the room this box belongs to
+      if (box.box_belong_room_id) {
+        const memberCheck = await query(
+          'SELECT 1 FROM room_members WHERE member_room_id = $1 AND member_user_id = $2',
+          [box.box_belong_room_id, userId]
+        );
+        if (memberCheck.rows.length === 0) {
+          return error(res, 'Access denied', 403);
+        }
+      }
+
       // Get items in this box
       const itemsResult = await query(
         `SELECT i.*, u.user_nickname as owner_nickname
@@ -145,6 +156,23 @@ export const scanQrcode = async (req: AuthRequest, res: Response) => {
     }
 
     const item = itemResult.rows[0];
+
+    // Authorization: verify user has access to this item's room
+    const itemBelongRoomId = item.box_belong_room_id;
+    if (itemBelongRoomId) {
+      const memberCheck = await query(
+        'SELECT 1 FROM room_members WHERE member_room_id = $1 AND member_user_id = $2',
+        [itemBelongRoomId, userId]
+      );
+      if (memberCheck.rows.length === 0) {
+        return error(res, 'Access denied', 403);
+      }
+    } else {
+      // Personal box item — only owner can scan
+      if (item.item_belong_user_id !== userId) {
+        return error(res, 'Access denied', 403);
+      }
+    }
 
     item.isOwner = item.item_belong_user_id === userId;
 
