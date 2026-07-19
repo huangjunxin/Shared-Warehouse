@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { error } from '../utils/response';
+import { query } from '../config/database';
 
 export interface JwtPayload {
   userId: number;
   loginName: string;
+  tokenVersion?: number;
 }
 
 export interface AuthRequest extends Request {
@@ -19,7 +21,7 @@ const getJwtSecret = (): string => {
   return secret;
 };
 
-export const auth = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const auth = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -31,6 +33,18 @@ export const auth = (req: AuthRequest, res: Response, next: NextFunction) => {
     const secret = getJwtSecret();
 
     const decoded = jwt.verify(token, secret) as JwtPayload;
+
+    // Verify token version (revocation check)
+    if (decoded.tokenVersion !== undefined) {
+      const userResult = await query(
+        'SELECT token_version FROM users WHERE user_id = $1',
+        [decoded.userId]
+      );
+      if (userResult.rows.length === 0 || userResult.rows[0].token_version !== decoded.tokenVersion) {
+        return error(res, 'Token has been revoked', 401);
+      }
+    }
+
     req.user = decoded;
 
     next();

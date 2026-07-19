@@ -58,10 +58,10 @@ export const register = async (req: Request, res: Response) => {
 
     const user = result.rows[0];
 
-    // Generate token
+    // Generate token with version
     const signOptions: SignOptions = { expiresIn: '7d' };
     const token = jwt.sign(
-      { userId: user.user_id, loginName: user.user_login_name },
+      { userId: user.user_id, loginName: user.user_login_name, tokenVersion: 0 },
       JWT_SECRET,
       signOptions
     );
@@ -99,10 +99,10 @@ export const login = async (req: Request, res: Response) => {
       return error(res, 'Invalid credentials', 401);
     }
 
-    // Generate token
+    // Generate token with version
     const signOptions: SignOptions = { expiresIn: '7d' };
     const token = jwt.sign(
-      { userId: user.user_id, loginName: user.user_login_name },
+      { userId: user.user_id, loginName: user.user_login_name, tokenVersion: user.token_version || 0 },
       JWT_SECRET,
       signOptions
     );
