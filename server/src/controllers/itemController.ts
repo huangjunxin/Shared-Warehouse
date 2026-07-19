@@ -519,6 +519,31 @@ export const getItemByQrcode = async (req: AuthRequest, res: Response) => {
 
     const item = result.rows[0];
 
+    // Authorization: verify user has access to this item
+    // Need to check the item's belong room (not just current box room)
+    const belongRoomResult = await query(
+      'SELECT item_belong_user_id, belong_box_id FROM items WHERE item_id = $1',
+      [item.item_id]
+    );
+    const belongRoomCheck = await query(
+      'SELECT box_belong_room_id FROM boxes WHERE box_id = $1',
+      [belongRoomResult.rows[0]?.belong_box_id]
+    );
+    const belongRoomId = belongRoomCheck.rows[0]?.box_belong_room_id;
+    if (belongRoomId) {
+      const memberCheck = await query(
+        'SELECT 1 FROM room_members WHERE member_room_id = $1 AND member_user_id = $2',
+        [belongRoomId, userId]
+      );
+      if (memberCheck.rows.length === 0) {
+        return error(res, 'Access denied', 403);
+      }
+    } else {
+      if (item.item_belong_user_id !== userId) {
+        return error(res, 'Access denied', 403);
+      }
+    }
+
     item.isOwner = item.item_belong_user_id === userId;
 
     return success(res, item);
