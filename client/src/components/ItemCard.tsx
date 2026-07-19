@@ -133,8 +133,8 @@ export default function ItemCard({ item, onClick, showStockStatus = true, showCa
   const { t } = useTranslation();
   const isInStock = item.is_in_stock !== false;
   const isForeign = item.is_foreign === true;
-  const { items: cartItems, addItem } = useCartStore();
-  const isInCart = cartItems.some((i) => i.itemId === item.item_id);
+  const isInCart = useCartStore((s) => s.items.some((i) => i.itemId === item.item_id));
+  const addItem = useCartStore((s) => s.addItem);
   const displayName = item.remark || item.item_name;
 
   const handleCartClick = (e: React.MouseEvent) => {
