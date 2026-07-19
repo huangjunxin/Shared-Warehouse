@@ -273,10 +273,12 @@ export default function MainLayout() {
   }));
 
   useEffect(() => {
-    fetchUnreadCount();
-    itemApi.getInHandCount().then((res: any) => {
-      setInHandCount(res.data?.count || 0);
-    }).catch(() => {});
+    Promise.all([
+      fetchUnreadCount(),
+      itemApi.getInHandCount().then((res: any) => {
+        setInHandCount(res.data?.count || 0);
+      }).catch(() => {}),
+    ]);
   }, [pathname]);
 
   const inHandIcon = inHandCount > 0
