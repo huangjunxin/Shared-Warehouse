@@ -132,7 +132,9 @@ export const checkout = async (req: AuthRequest, res: Response) => {
     }
     const { title } = req.body;
 
+    // Atomically retrieve and clear cart to prevent double-checkout race
     const cart = carts.get(userId) || [];
+    carts.delete(userId);
 
     if (cart.length === 0) {
       return error(res, 'Cart is empty');
@@ -191,9 +193,6 @@ export const checkout = async (req: AuthRequest, res: Response) => {
         reservations.push(result.rows[0]);
       }
     }
-
-    // Clear cart
-    carts.delete(userId);
 
     return success(res, { order, reservations, errors }, 'Checkout completed', 201);
   } catch (err) {
