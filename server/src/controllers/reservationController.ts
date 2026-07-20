@@ -801,6 +801,13 @@ export const checkConflicts = async (req: AuthRequest, res: Response) => {
       return error(res, 'End time must be after start time');
     }
 
+    const userId = req.user?.userId;
+    for (const itemId of itemIds) {
+      if (!userId || !await hasItemAccess(userId, Number(itemId))) {
+        return error(res, 'Access denied', 403);
+      }
+    }
+
     const conflicts: {
       itemId: number;
       itemName: string;
