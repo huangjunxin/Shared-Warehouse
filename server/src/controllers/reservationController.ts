@@ -395,14 +395,15 @@ export const createReservation = async (req: AuthRequest, res: Response) => {
       return error(res, 'End time must be after start time');
     }
 
-    if (!userId || !await hasItemAccess(userId, Number(itemId))) {
-      return error(res, 'Access denied', 403);
-    }
-
     // Use a transaction with row-level locking to prevent TOCTOU race
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+
+      if (!userId || !await hasItemAccess(userId, Number(itemId), client)) {
+        await client.query('ROLLBACK');
+        return error(res, 'Access denied', 403);
+      }
 
       // Lock existing reservations for this item to prevent concurrent inserts
       const conflictCheck = await client.query(
