@@ -377,13 +377,12 @@ export const updateItem = async (req: AuthRequest, res: Response) => {
     }
 
     if (image !== undefined) {
-      if (typeof image === 'string') {
-        const imageMatch = image.match(/^\/(avatars|images)\/[a-zA-Z0-9_-]+\.(jpg|png|gif|webp)$/);
-        if (imageMatch) {
-          updates.push(`item_image = $${paramCount++}`);
-          values.push(image);
-        }
+      if (typeof image !== 'string' ||
+        !image.match(/^\/(avatars|images)\/[a-zA-Z0-9_-]+\.(jpg|png|gif|webp)$/)) {
+        return error(res, 'Invalid image path');
       }
+      updates.push(`item_image = $${paramCount++}`);
+      values.push(image);
     }
 
     if (updates.length === 0) {
