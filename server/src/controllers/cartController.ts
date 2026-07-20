@@ -140,6 +140,14 @@ export const checkout = async (req: AuthRequest, res: Response) => {
       return error(res, 'Cart is empty');
     }
 
+    // Re-verify item access BEFORE creating any database records
+    for (const item of cart) {
+      if (!await hasItemAccess(userId, Number(item.itemId))) {
+        carts.set(userId, cart); // restore cart on failure
+        return error(res, 'Access denied: you no longer have access to one or more cart items', 403);
+      }
+    }
+
     const createTime = Date.now();
 
     // Create order
@@ -151,13 +159,6 @@ export const checkout = async (req: AuthRequest, res: Response) => {
     );
 
     const order = orderResult.rows[0];
-
-    // Re-verify item access at checkout time
-    for (const item of cart) {
-      if (!await hasItemAccess(userId, Number(item.itemId))) {
-        return error(res, 'Access denied: you no longer have access to one or more cart items', 403);
-      }
-    }
 
     // Create reservations
     const reservations = [];
