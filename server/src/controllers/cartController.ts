@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { success, error } from '../utils/response';
 import { AuthRequest } from '../middlewares/auth';
+import { hasItemAccess } from '../utils/access';
 
 // In-memory cart storage (for simplicity; in production, use Redis or database)
 // Key: userId, Value: Array of { itemId, roomId, startTime, endTime }
@@ -148,6 +149,13 @@ export const checkout = async (req: AuthRequest, res: Response) => {
     );
 
     const order = orderResult.rows[0];
+
+    // Re-verify item access at checkout time
+    for (const item of cart) {
+      if (!await hasItemAccess(userId, Number(item.itemId))) {
+        return error(res, 'Access denied: you no longer have access to one or more cart items', 403);
+      }
+    }
 
     // Create reservations
     const reservations = [];
