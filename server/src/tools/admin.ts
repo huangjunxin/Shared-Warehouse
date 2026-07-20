@@ -157,10 +157,10 @@ async function resetPassword(): Promise<void> {
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   await pool.query(
-    'UPDATE users SET user_password = $1 WHERE user_id = $2',
+    'UPDATE users SET user_password = $1, token_version = token_version + 1 WHERE user_id = $2',
     [hashedPassword, userId]
   );
-  console.log('\n密码已重置');
+  console.log('\n密码已重置（已使该用户所有现有会话失效）');
   console.log(`新密码: ${newPassword}`);
   console.log('请将此密码告知用户，并提醒其尽快修改');
 }
